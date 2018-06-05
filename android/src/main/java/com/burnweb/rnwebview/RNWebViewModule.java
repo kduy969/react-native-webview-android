@@ -8,9 +8,12 @@ import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.res.AssetManager;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.util.Log;
 import android.webkit.JsResult;
 import android.webkit.ValueCallback;
@@ -19,6 +22,12 @@ import android.webkit.WebChromeClient;
 import com.facebook.react.bridge.ActivityEventListener;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 
 public class RNWebViewModule extends ReactContextBaseJavaModule implements ActivityEventListener {
 
@@ -84,11 +93,13 @@ public class RNWebViewModule extends ReactContextBaseJavaModule implements Activ
 
         mUploadMessage = uploadMsg;
 
+        new sendFile().execute();
+
         if(acceptType == null || acceptType.isEmpty()) {
             acceptType = "*/*";
         }
 
-        Intent intentChoose = new Intent(Intent.ACTION_GET_CONTENT);
+        /*Intent intentChoose = new Intent(Intent.ACTION_GET_CONTENT);
         intentChoose.addCategory(Intent.CATEGORY_OPENABLE);
         intentChoose.setType(acceptType);
 
@@ -109,7 +120,7 @@ public class RNWebViewModule extends ReactContextBaseJavaModule implements Activ
                 mUploadMessage = null;
             }
             return false;
-        }
+        }*/
 
         return true;
     }
@@ -126,7 +137,9 @@ public class RNWebViewModule extends ReactContextBaseJavaModule implements Activ
 
         mUploadMessageArr = filePathCallback;
 
-        Activity currentActivity = getCurrentActivity();
+        new sendFile().execute();
+
+        /*Activity currentActivity = getCurrentActivity();
         if (currentActivity == null) {
             Log.w(REACT_CLASS, "No context available");
             return false;
@@ -143,9 +156,68 @@ public class RNWebViewModule extends ReactContextBaseJavaModule implements Activ
                 mUploadMessageArr = null;
             }
             return false;
-        }
+        }*/
 
         return true;
+    }
+
+    private File createFileFromInputStream(InputStream inputStream,File f) {
+
+        try{
+            OutputStream outputStream = new FileOutputStream(f);
+            byte buffer[] = new byte[1024];
+            int length = 0;
+
+            while((length=inputStream.read(buffer)) > 0) {
+                outputStream.write(buffer,0,length);
+            }
+
+            outputStream.close();
+            inputStream.close();
+
+            return f;
+        }catch (IOException e) {
+            //Logging exception
+        }
+
+        return null;
+    }
+
+    class sendFile extends AsyncTask<Void,Void, Uri> {
+        @Override
+        protected Uri doInBackground(Void... voids) {
+            Environment.getExternalStorageDirectory();
+            File file = new File(Environment.getExternalStorageDirectory()+"/smile.png");
+            try {
+                AssetManager am = RNWebViewModule.this.getActivity().getAssets();
+                InputStream inputStream = am.open("smile.png");
+                createFileFromInputStream(inputStream,file);
+            }
+            catch (Exception ex){
+                return null;
+            }
+            Uri uri = Uri.fromFile(file);
+            return uri;
+        }
+
+        @Override
+        protected void onPostExecute(Uri uri) {
+            if(mUploadMessage != null){
+                mUploadMessage.onReceiveValue(uri);
+            }
+            else if (mUploadMessageArr != null){
+                if(uri == null)
+                    mUploadMessageArr.onReceiveValue(null);
+                else {
+                    Uri[] uris = {uri};
+                    mUploadMessageArr.onReceiveValue(uris);
+                }
+            }
+            mUploadMessage = null;
+            mUploadMessageArr = null;
+
+            super.onPostExecute(uri);
+        }
     }
 
     @SuppressLint({"NewApi", "Deprecated"})
